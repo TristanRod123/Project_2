@@ -32,6 +32,8 @@ CPFA_loop_functions::CPFA_loop_functions() :
 	RateOfSiteFidelity(0.0),
 	RateOfLayingPheromone(0.0),
 	RateOfPheromoneDecay(0.0),
+	CommunicationRange(2.0),
+	CommunicationRangeSquared(4.0),
 	FoodRadius(0.05),
 	FoodRadiusSquared(0.0025),
 	NestRadius(0.12),
@@ -57,6 +59,11 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
 	argos::GetNodeAttribute(CPFA_node, "RateOfLayingPheromone",             RateOfLayingPheromone);
 	argos::GetNodeAttribute(CPFA_node, "RateOfPheromoneDecay",              RateOfPheromoneDecay);
 	argos::GetNodeAttribute(CPFA_node, "PrintFinalScore",                   PrintFinalScore);
+
+	if(argos::NodeAttributeExists(CPFA_node, "CommunicationRange")) {
+		argos::GetNodeAttribute(CPFA_node, "CommunicationRange", CommunicationRange);
+	}
+	CommunicationRangeSquared = CommunicationRange * CommunicationRange;
 
 	UninformedSearchVariation = ToRadians(USV_InDegrees);
 	argos::TConfigurationNode settings_node = argos::GetNode(node, "settings");
@@ -177,6 +184,8 @@ void CPFA_loop_functions::PreStep() {
     }
 
 
+	   UpdatePheromoneList();
+	   SharePheromonesLocally();
 	   UpdatePheromoneList();
 
 	   if(GetSpace().GetSimulationClock() > ResourceDensityDelay) {
@@ -312,24 +321,67 @@ argos::CColor CPFA_loop_functions::GetFloorColor(const argos::CVector2 &c_pos_on
 void CPFA_loop_functions::UpdatePheromoneList() {
 	// Return if this is not a tick that lands on a 0.5 second interval
 	if ((int)(GetSpace().GetSimulationClock()) % ((int)(GetSimulator().GetPhysicsEngine("dyn2d").GetInverseSimulationClockTick()) / 2) != 0) return;
-	
-	std::vector<Pheromone> new_p_list; 
 
 	argos::Real t = GetSpace().GetSimulationClock() / GetSimulator().GetPhysicsEngine("dyn2d").GetInverseSimulationClockTick();
+	argos::CSpace::TMapPerType& footbots = GetSpace().GetEntitiesByType("foot-bot");
 
-	//ofstream log_output_stream;
-	//log_output_stream.open("time.txt", ios::app);
-	//log_output_stream << t << ", " << GetSpace().GetSimulationClock() << ", " << GetSimulator().GetPhysicsEngine("default").GetInverseSimulationClockTick() << endl;
-	//log_output_stream.close();
-	    for(size_t i = 0; i < PheromoneList.size(); i++) {
+	for(argos::CSpace::TMapPerType::iterator it = footbots.begin(); it != footbots.end(); ++it) {
+		argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+		BaseController& baseController = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
+		CPFA_controller& controller = dynamic_cast<CPFA_controller&>(baseController);
+		controller.UpdateLocalPheromoneList(t);
+	}
 
-		PheromoneList[i].Update(t);
-		if(PheromoneList[i].IsActive()) {
-			new_p_list.push_back(PheromoneList[i]);
+	PheromoneList.clear();
+	for(argos::CSpace::TMapPerType::iterator it = footbots.begin(); it != footbots.end(); ++it) {
+		argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+		BaseController& baseController = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
+		CPFA_controller& controller = dynamic_cast<CPFA_controller&>(baseController);
+
+		const std::vector<Pheromone>& robotPheromones = controller.GetLocalPheromoneList();
+		for(size_t i = 0; i < robotPheromones.size(); ++i) {
+			bool duplicateFound = false;
+			for(size_t j = 0; j < PheromoneList.size(); ++j) {
+				if((PheromoneList[j].GetLocation() - robotPheromones[i].GetLocation()).SquareLength() <= 0.0001) {
+					if(robotPheromones[i].GetWeight() > PheromoneList[j].GetWeight()) {
+						PheromoneList[j] = robotPheromones[i];
+					}
+					duplicateFound = true;
+					break;
+				}
+			}
+
+			if(!duplicateFound) {
+				PheromoneList.push_back(robotPheromones[i]);
+			}
 		}
-      }
-     	PheromoneList = new_p_list;
-	new_p_list.clear();
+	}
+}
+
+void CPFA_loop_functions::SharePheromonesLocally() {
+	// Communication exchange happens on the same cadence as pheromone update.
+	if ((int)(GetSpace().GetSimulationClock()) % ((int)(GetSimulator().GetPhysicsEngine("dyn2d").GetInverseSimulationClockTick()) / 2) != 0) return;
+
+	argos::CSpace::TMapPerType& footbots = GetSpace().GetEntitiesByType("foot-bot");
+	std::vector<CPFA_controller*> controllers;
+	std::vector<argos::CVector2> positions;
+
+	for(argos::CSpace::TMapPerType::iterator it = footbots.begin(); it != footbots.end(); ++it) {
+		argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+		BaseController& baseController = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
+		CPFA_controller& controller = dynamic_cast<CPFA_controller&>(baseController);
+		controllers.push_back(&controller);
+		positions.push_back(controller.GetPosition());
+	}
+
+	for(size_t i = 0; i < controllers.size(); ++i) {
+		for(size_t j = i + 1; j < controllers.size(); ++j) {
+			if((positions[i] - positions[j]).SquareLength() <= CommunicationRangeSquared) {
+				controllers[i]->MergeSharedPheromones(controllers[j]->GetLocalPheromoneList());
+				controllers[j]->MergeSharedPheromones(controllers[i]->GetLocalPheromoneList());
+			}
+		}
+	}
 }
 void CPFA_loop_functions::SetFoodDistribution() {
 	switch(FoodDistribution) {

@@ -50,6 +50,7 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 	
 		/* public helper functions */
 		void UpdatePheromoneList();
+		void SharePheromonesLocally();
 		void SetFoodDistribution();
 
 		argos::Real getSimTimeInSeconds();
@@ -103,6 +104,8 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		argos::Real RateOfSiteFidelity;
 		argos::Real RateOfLayingPheromone;
 		argos::Real RateOfPheromoneDecay;
+		argos::Real CommunicationRange;
+		argos::Real CommunicationRangeSquared;
 
 		/* physical robot & world variables */
 		argos::Real FoodRadius;

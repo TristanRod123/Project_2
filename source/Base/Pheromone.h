@@ -18,11 +18,11 @@ class Pheromone {
         void                         Update(argos::Real time);
         void                         UpdateLocation(argos::CVector2  location); //qilu 09/12/2016
         void                         Deactivate();
-        argos::CVector2              GetLocation();
-        std::vector<argos::CVector2> GetTrail();
-        argos::Real                  GetWeight();
-        size_t                       GetResourceDensity();
-        bool                          IsActive();
+        argos::CVector2              GetLocation() const;
+        std::vector<argos::CVector2> GetTrail() const;
+        argos::Real                  GetWeight() const;
+        size_t                       GetResourceDensity() const;
+        bool                         IsActive() const;
         argos::CVector2              location;
         size_t ResourceDensity;
 

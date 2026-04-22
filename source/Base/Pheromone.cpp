@@ -51,24 +51,24 @@ void Pheromone::Deactivate() {
 /*****
  * Return the pheromone's location.
  *****/
-argos::CVector2 Pheromone::GetLocation() {
+argos::CVector2 Pheromone::GetLocation() const {
     return location;
 }
 
 /*****
  * Return the trail between the pheromone and the nest.
  *****/
-std::vector<argos::CVector2> Pheromone::GetTrail() {
+std::vector<argos::CVector2> Pheromone::GetTrail() const {
     return trail;
 }
 
 /*****
  * Return the weight, or strength, of this pheromone.
  *****/
-argos::Real Pheromone::GetWeight() {
+argos::Real Pheromone::GetWeight() const {
 	return weight;
 }
-size_t  Pheromone::GetResourceDensity(){
+size_t  Pheromone::GetResourceDensity() const {
     return ResourceDensity;
 }
 
@@ -77,6 +77,6 @@ size_t  Pheromone::GetResourceDensity(){
  * TRUE:  weight >  threshold : the pheromone is active
  * FALSE: weight <= threshold : the pheromone is not active
  *****/
-bool Pheromone::IsActive() {
+bool Pheromone::IsActive() const {
 	return (weight > threshold);
 }

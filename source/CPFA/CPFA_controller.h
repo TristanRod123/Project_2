@@ -32,6 +32,9 @@ class CPFA_controller : public BaseController {
 		Real FoodDistanceTolerance;
 
 		void SetLoopFunctions(CPFA_loop_functions* lf);
+		void UpdateLocalPheromoneList(argos::Real timeInSeconds);
+		void MergeSharedPheromones(const std::vector<Pheromone>& incomingPheromones);
+		const std::vector<Pheromone>& GetLocalPheromoneList() const;
   
   size_t     GetSearchingTime();//qilu 09/26/2016
   size_t      GetTravelingTime();//qilu 09/26/2016
@@ -49,6 +52,7 @@ class CPFA_controller : public BaseController {
 		std::vector<argos::CVector2> TrailToShare;
 		std::vector<argos::CVector2> TrailToFollow;
 		std::vector<argos::CRay3>    MyTrail;
+		std::vector<Pheromone>       LocalPheromoneList;
 
 		/* robot position variables */
 		argos::CVector2 SiteFidelityPosition;
@@ -92,6 +96,7 @@ class CPFA_controller : public BaseController {
 		void SetFidelityList(argos::CVector2 newFidelity);
 		void SetFidelityList();
 		bool SetTargetPheromone();
+		void AddOrMergePheromone(const Pheromone& pheromone);
 
 		argos::Real GetExponentialDecay(argos::Real value, argos::Real time, argos::Real lambda);
 		argos::Real GetBound(argos::Real value, argos::Real min, argos::Real max);

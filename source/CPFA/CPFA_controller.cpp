@@ -1,6 +1,10 @@
 #include "CPFA_controller.h"
 #include <unistd.h>
 
+namespace {
+const argos::Real kPheromoneMergeDistanceSquared = 0.01 * 0.01;
+}
+
 CPFA_controller::CPFA_controller() :
 	RNG(argos::CRandom::CreateRNG("argos")),
 	isInformed(false),
@@ -126,6 +130,7 @@ void CPFA_controller::Reset() {
     updateFidelity = false;
     TrailToShare.clear();
     TrailToFollow.clear();
+	LocalPheromoneList.clear();
     	MyTrail.clear();
 
 	myTrail.clear();
@@ -510,8 +515,7 @@ void CPFA_controller::Returning() {
 	            TrailToShare.push_back(LoopFunctions->NestPosition); //qilu 07/26/2016
                 argos::Real timeInSeconds = (argos::Real)(SimulationTick() / SimulationTicksPerSecond());
 		        Pheromone sharedPheromone(SiteFidelityPosition, TrailToShare, timeInSeconds, LoopFunctions->RateOfPheromoneDecay, ResourceDensity);
-                LoopFunctions->PheromoneList.push_back(sharedPheromone);
-                sharedPheromone.Deactivate(); // make sure this won't get re-added later...
+			        AddOrMergePheromone(sharedPheromone);
           }
           TrailToShare.clear();  
 	    }
@@ -775,36 +779,38 @@ bool CPFA_controller::SetTargetPheromone() {
 	argos::Real maxStrength = 0.0, randomWeight = 0.0;
 	bool isPheromoneSet = false;
 
- if(LoopFunctions->PheromoneList.size()==0) return isPheromoneSet; //the case of no pheromone.
+ if(LocalPheromoneList.size()==0) return isPheromoneSet; //the case of no pheromone.
 	/* update the pheromone list and remove inactive pheromones */
 
 	/* default target = nest; in case we have 0 active pheromones */
 	//SetIsHeadingToNest(true);
 	//SetTarget(LoopFunctions->NestPosition);
 	/* Calculate a maximum strength based on active pheromone weights. */
-	for(size_t i = 0; i < LoopFunctions->PheromoneList.size(); i++) {
-		if(LoopFunctions->PheromoneList[i].IsActive()) {
-			maxStrength += LoopFunctions->PheromoneList[i].GetWeight();
+	for(size_t i = 0; i < LocalPheromoneList.size(); i++) {
+		if(LocalPheromoneList[i].IsActive()) {
+			maxStrength += LocalPheromoneList[i].GetWeight();
 		}
 	}
+
+	if(maxStrength <= 0.0) return false;
 
 	/* Calculate a random weight. */
 	randomWeight = RNG->Uniform(argos::CRange<argos::Real>(0.0, maxStrength));
 
 	/* Randomly select an active pheromone to follow. */
-	for(size_t i = 0; i < LoopFunctions->PheromoneList.size(); i++) {
-		   if(randomWeight < LoopFunctions->PheromoneList[i].GetWeight()) {
+	for(size_t i = 0; i < LocalPheromoneList.size(); i++) {
+		   if(randomWeight < LocalPheromoneList[i].GetWeight()) {
 			       /* We've chosen a pheromone! */
 			       SetIsHeadingToNest(false);
-          SetTarget(LoopFunctions->PheromoneList[i].GetLocation());
-          TrailToFollow = LoopFunctions->PheromoneList[i].GetTrail();
+		SetTarget(LocalPheromoneList[i].GetLocation());
+		TrailToFollow = LocalPheromoneList[i].GetTrail();
           isPheromoneSet = true;
           /* If we pick a pheromone, break out of this loop. */
           break;
      }
 
      /* We didn't pick a pheromone! Remove its weight from randomWeight. */
-     randomWeight -= LoopFunctions->PheromoneList[i].GetWeight();
+	randomWeight -= LocalPheromoneList[i].GetWeight();
 	}
 
 	//ofstream log_output_stream;
@@ -913,6 +919,46 @@ void CPFA_controller::UpdateTargetRayList() {
 			// loopFunctions.TargetRayList.push_back(myTrail);
 		}
 	}
+}
+
+void CPFA_controller::UpdateLocalPheromoneList(argos::Real timeInSeconds) {
+	std::vector<Pheromone> updatedPheromones;
+
+	for(size_t i = 0; i < LocalPheromoneList.size(); i++) {
+		LocalPheromoneList[i].Update(timeInSeconds);
+		if(LocalPheromoneList[i].IsActive()) {
+			updatedPheromones.push_back(LocalPheromoneList[i]);
+		}
+	}
+
+	LocalPheromoneList = updatedPheromones;
+}
+
+void CPFA_controller::MergeSharedPheromones(const std::vector<Pheromone>& incomingPheromones) {
+	for(size_t i = 0; i < incomingPheromones.size(); i++) {
+		if(incomingPheromones[i].IsActive()) {
+			AddOrMergePheromone(incomingPheromones[i]);
+		}
+	}
+}
+
+const std::vector<Pheromone>& CPFA_controller::GetLocalPheromoneList() const {
+	return LocalPheromoneList;
+}
+
+void CPFA_controller::AddOrMergePheromone(const Pheromone& pheromone) {
+	if(!pheromone.IsActive()) return;
+
+	for(size_t i = 0; i < LocalPheromoneList.size(); i++) {
+		if((LocalPheromoneList[i].GetLocation() - pheromone.GetLocation()).SquareLength() <= kPheromoneMergeDistanceSquared) {
+			if(pheromone.GetWeight() > LocalPheromoneList[i].GetWeight()) {
+				LocalPheromoneList[i] = pheromone;
+			}
+			return;
+		}
+	}
+
+	LocalPheromoneList.push_back(pheromone);
 }
 
 REGISTER_CONTROLLER(CPFA_controller, "CPFA_controller")
